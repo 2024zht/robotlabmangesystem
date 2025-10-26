@@ -1,0 +1,148 @@
+# ==================== Node.js ====================
+# 依赖包
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ==================== 编译输出 ====================
+# 后端编译文件
+backend/dist/
+
+# 前端构建文件
+frontend/dist/
+
+# TypeScript 缓存
+*.tsbuildinfo
+
+# ==================== 数据库 ====================
+# SQLite 数据库文件（保留备份文件示例）
+*.sqlite
+*.db
+
+# 保留备份示例但忽略实际备份
+!database.sqlite.example
+database.sqlite.backup*
+
+# ==================== 上传文件 ====================
+# 用户上传的文件
+backend/uploads/ebooks/*
+!backend/uploads/ebooks/.gitkeep
+
+# 上传的设备图片（保留示例图片）
+frontend/public/equipment-*.png
+frontend/public/equipment-*.jpg
+frontend/public/equipment-*.jpeg
+frontend/public/equipment-*.gif
+frontend/public/equipment-*.webp
+
+# ==================== 环境变量 ====================
+.env.local
+.env.*.local
+.env.production
+
+# ==================== 日志文件 ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# PM2 日志
+.pm2/
+pm2.log
+
+# ==================== 操作系统 ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ==================== IDE / 编辑器 ====================
+# VS Code
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.history/
+
+# JetBrains IDEs (WebStorm, IntelliJ, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==================== 临时文件 ====================
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.cache
+
+# 测试覆盖率
+coverage/
+*.lcov
+.nyc_output/
+
+# ==================== 构建工具 ====================
+# Vite
+.vite/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Webpack
+.webpack/
+
+# ==================== 其他 ====================
+# 压缩文件（如果用于临时打包）
+*.zip
+*.tar.gz
+*.rar
+
+# 证书和密钥文件
+*.pem
+*.key
+*.crt
+*.cert
+
+# 备份文件
+*.backup
+backup/
+
+# 本地配置文件
+config.local.*
+
