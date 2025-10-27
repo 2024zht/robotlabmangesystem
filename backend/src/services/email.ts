@@ -349,7 +349,7 @@ export const sendEquipmentRequestEmail = (
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${baseUrl}/admin/equipment-requests" 
+        <a href="${baseUrl}/admin?tab=equipment" 
            style="background-color: #1e40af; color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">
           立即审批
         </a>
