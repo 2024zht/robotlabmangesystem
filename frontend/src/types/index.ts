@@ -106,9 +106,12 @@ export interface DownloadTask {
   status: 'waiting' | 'downloading' | 'completed' | 'error' | 'cancelled';
   progress: number; // 0-100
   downloadedBytes: number; // 已下载字节数
+  downloadSpeed?: number; // 下载速率 (bytes/s)
   error?: string;
   startTime?: number;
   endTime?: number;
+  lastUpdateTime?: number; // 上次更新时间
+  lastDownloadedBytes?: number; // 上次已下载字节数
   cancelTokenSource?: any; // axios CancelTokenSource
   ebookId?: number; // 电子书ID（用于本地下载）
 }

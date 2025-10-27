@@ -446,7 +446,11 @@ const Ebooks: React.FC = () => {
     }
 
     try {
-      updateDownloadTask(task.id, { status: 'downloading' });
+      updateDownloadTask(task.id, { 
+        status: 'downloading',
+        lastUpdateTime: Date.now(),
+        lastDownloadedBytes: 0,
+      });
 
       let downloadUrl: string;
       
@@ -461,11 +465,29 @@ const Ebooks: React.FC = () => {
         headers: task.source === 'local' ? { 'Authorization': `Bearer ${token}` } : {},
         responseType: 'blob',
         onDownloadProgress: (progressEvent) => {
+          const now = Date.now();
+          const currentTask = downloadTasks.find(t => t.id === task.id);
+          
           if (progressEvent.total) {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            
+            // 计算下载速率
+            let downloadSpeed = 0;
+            if (currentTask?.lastUpdateTime && currentTask?.lastDownloadedBytes !== undefined) {
+              const timeDiff = (now - currentTask.lastUpdateTime) / 1000; // 秒
+              const bytesDiff = progressEvent.loaded - currentTask.lastDownloadedBytes;
+              
+              if (timeDiff > 0) {
+                downloadSpeed = bytesDiff / timeDiff; // bytes/s
+              }
+            }
+            
             updateDownloadTask(task.id, {
               progress,
               downloadedBytes: progressEvent.loaded,
+              downloadSpeed,
+              lastUpdateTime: now,
+              lastDownloadedBytes: progressEvent.loaded,
             });
           }
         },
@@ -566,7 +588,8 @@ const Ebooks: React.FC = () => {
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
   };
 
   // 格式化时间
@@ -575,6 +598,14 @@ const Ebooks: React.FC = () => {
     if (seconds < 60) return `${seconds}秒`;
     const minutes = Math.floor(seconds / 60);
     return `${minutes}分${seconds % 60}秒`;
+  };
+
+  // 格式化速率
+  const formatSpeed = (bytesPerSecond: number): string => {
+    if (!bytesPerSecond || bytesPerSecond < 0) return '0 B/s';
+    if (bytesPerSecond < 1024) return bytesPerSecond.toFixed(0) + ' B/s';
+    if (bytesPerSecond < 1024 * 1024) return (bytesPerSecond / 1024).toFixed(2) + ' KB/s';
+    return (bytesPerSecond / (1024 * 1024)).toFixed(2) + ' MB/s';
   };
 
   // 获取预览URL
@@ -759,7 +790,14 @@ const Ebooks: React.FC = () => {
                 <div className="text-xs text-gray-600 mb-2">
                   {task.status === 'waiting' && '等待下载...'}
                   {task.status === 'downloading' && (
-                    <span>下载中... {formatFileSize(task.downloadedBytes)} / {formatFileSize(task.fileSize)}</span>
+                    <div className="space-y-1">
+                      <div>{formatFileSize(task.downloadedBytes)} / {formatFileSize(task.fileSize)}</div>
+                      {task.downloadSpeed !== undefined && task.downloadSpeed > 0 && (
+                        <div className="text-blue-600 font-medium">
+                          ⬇ {formatSpeed(task.downloadSpeed)}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {task.status === 'completed' && (
                     <span className="text-green-600 font-medium">✓ 下载完成</span>

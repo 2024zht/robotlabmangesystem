@@ -679,10 +679,16 @@ router.get('/file/:id', authenticateToken, async (req: AuthRequest, res: Respons
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: '文件不存在' });
     }
+
+    // 获取文件大小
+    const stat = fs.statSync(filePath);
+    const fileSize = stat.size;
     
-    // 设置响应头并发送文件（attachment 表示下载）
+    // 设置响应头（包括 Content-Length 以支持进度显示）
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(ebook.originalName)}"`);
+    res.setHeader('Content-Length', fileSize.toString());
+    res.setHeader('Accept-Ranges', 'bytes');
     
     // 流式传输文件
     const fileStream = fs.createReadStream(filePath);
