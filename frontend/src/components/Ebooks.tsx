@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ebookAPI } from '../services/api';
-import { Ebook, UploadTask } from '../types';
+import { Ebook, UploadTask, DownloadTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Book, Download, Upload, HardDrive, X, CheckCircle, AlertCircle, Clock, Cloud, Server, Eye, ExternalLink, Trash2 } from 'lucide-react';
 import axios from 'axios';
@@ -9,6 +9,7 @@ const Ebooks: React.FC = () => {
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [previewEbook, setPreviewEbook] = useState<Ebook | null>(null);
   const { user } = useAuth();
@@ -405,62 +406,152 @@ const Ebooks: React.FC = () => {
     setPreviewEbook(null);
   };
 
-  // 从本地下载电子书
-  const handleDownloadLocal = async (ebook: Ebook) => {
+  // 从本地下载电子书（添加到下载队列）
+  const handleDownloadLocal = (ebook: Ebook) => {
+    if (!ebook.id) {
+      alert('文件信息错误，无法下载');
+      console.error('Ebook missing id:', ebook);
+      return;
+    }
+
+    // 创建下载任务
+    const downloadTask: DownloadTask = {
+      id: `download-${Date.now()}-${Math.random()}`,
+      fileName: ebook.originalName,
+      fileSize: ebook.fileSize,
+      source: 'local',
+      status: 'waiting',
+      progress: 0,
+      downloadedBytes: 0,
+      startTime: Date.now(),
+      cancelTokenSource: axios.CancelToken.source(),
+      ebookId: ebook.id,
+    };
+
+    setDownloadTasks((prev) => [...prev, downloadTask]);
+    
+    // 开始下载
+    startDownload(downloadTask);
+  };
+
+  // 执行下载
+  const startDownload = async (task: DownloadTask) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      updateDownloadTask(task.id, {
+        status: 'error',
+        error: '未登录',
+      });
+      return;
+    }
+
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        alert('请先登录');
-        return;
-      }
+      updateDownloadTask(task.id, { status: 'downloading' });
 
-      if (!ebook.id) {
-        alert('文件信息错误，无法下载');
-        console.error('Ebook missing id:', ebook);
-        return;
-      }
-
-      // 直接下载本地文件
-      const downloadUrl = `/api/ebooks/file/${ebook.id}`;
+      let downloadUrl: string;
       
-      // 使用 axios 下载文件
+      if (task.source === 'local' && task.ebookId) {
+        downloadUrl = `/api/ebooks/file/${task.ebookId}`;
+      } else {
+        // 云端下载
+        downloadUrl = `https://divine-glade-0efd.hengtangzhao.workers.dev/api/${encodeURIComponent(task.fileName)}`;
+      }
+
       const response = await axios.get(downloadUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: task.source === 'local' ? { 'Authorization': `Bearer ${token}` } : {},
         responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            updateDownloadTask(task.id, {
+              progress,
+              downloadedBytes: progressEvent.loaded,
+            });
+          }
+        },
+        cancelToken: task.cancelTokenSource?.token,
       });
 
       // 创建下载链接
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', ebook.originalName);
+      link.setAttribute('download', task.fileName);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download error:', error);
-      alert('从本地下载失败');
+
+      updateDownloadTask(task.id, {
+        status: 'completed',
+        progress: 100,
+        endTime: Date.now(),
+      });
+    } catch (error: any) {
+      if (axios.isCancel(error)) {
+        updateDownloadTask(task.id, {
+          status: 'cancelled',
+          error: '下载已取消',
+        });
+      } else {
+        console.error('Download error:', error);
+        updateDownloadTask(task.id, {
+          status: 'error',
+          error: error.response?.data?.error || '下载失败',
+        });
+      }
     }
   };
 
-  // 从云端下载电子书
-  const handleDownloadCloud = async (ebook: Ebook) => {
-    try {
-      if (!ebook.b2Synced) {
-        alert('该文件尚未同步到云端');
-        return;
-      }
+  // 更新下载任务
+  const updateDownloadTask = (taskId: string, updates: Partial<DownloadTask>) => {
+    setDownloadTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId ? { ...task, ...updates } : task
+      )
+    );
+  };
 
-      // 使用 Worker URL 下载
-      const workerUrl = `https://divine-glade-0efd.hengtangzhao.workers.dev/api/${encodeURIComponent(ebook.originalName)}`;
-      window.open(workerUrl, '_blank');
-    } catch (error) {
-      console.error('Cloud download error:', error);
-      alert('从云端下载失败');
+  // 取消下载
+  const cancelDownload = (taskId: string) => {
+    const task = downloadTasks.find(t => t.id === taskId);
+    if (task && (task.status === 'downloading' || task.status === 'waiting')) {
+      task.cancelTokenSource?.cancel('用户取消下载');
     }
+    setDownloadTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  // 清除已完成的下载
+  const clearCompletedDownloads = () => {
+    setDownloadTasks((prev) =>
+      prev.filter((task) => task.status !== 'completed' && task.status !== 'error' && task.status !== 'cancelled')
+    );
+  };
+
+  // 从云端下载电子书（添加到下载队列）
+  const handleDownloadCloud = (ebook: Ebook) => {
+    if (!ebook.b2Synced) {
+      alert('该文件尚未同步到云端');
+      return;
+    }
+
+    // 创建下载任务
+    const downloadTask: DownloadTask = {
+      id: `download-${Date.now()}-${Math.random()}`,
+      fileName: ebook.originalName,
+      fileSize: ebook.fileSize,
+      source: 'cloud',
+      status: 'waiting',
+      progress: 0,
+      downloadedBytes: 0,
+      startTime: Date.now(),
+      cancelTokenSource: axios.CancelToken.source(),
+    };
+
+    setDownloadTasks((prev) => [...prev, downloadTask]);
+    
+    // 开始下载
+    startDownload(downloadTask);
   };
 
   if (loading) {
@@ -587,6 +678,117 @@ const Ebooks: React.FC = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 下载队列悬浮窗 */}
+      {downloadTasks.length > 0 && (
+        <div className="fixed bottom-6 left-6 z-50 w-[480px] bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-green-600 to-green-700 text-white flex justify-between items-center">
+            <div className="flex items-center">
+              <Download className="h-5 w-5 mr-2" />
+              <span className="font-semibold">下载队列 ({downloadTasks.filter(t => t.status !== 'completed').length}/{downloadTasks.length})</span>
+            </div>
+            <button
+              onClick={clearCompletedDownloads}
+              className="text-xs px-2 py-1 bg-white bg-opacity-20 rounded hover:bg-opacity-30 transition"
+            >
+              清除已完成
+            </button>
+          </div>
+
+          <div className="max-h-[300px] overflow-y-auto">
+            {downloadTasks.map((task) => (
+              <div key={task.id} className="p-4 border-b border-gray-100 hover:bg-gray-50">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      {task.status === 'waiting' && (
+                        <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      )}
+                      {task.status === 'downloading' && (
+                        <Download className="h-4 w-4 text-green-500 animate-pulse flex-shrink-0" />
+                      )}
+                      {task.status === 'completed' && (
+                        <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      )}
+                      {task.status === 'error' && (
+                        <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                      )}
+                      {task.status === 'cancelled' && (
+                        <X className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                      )}
+                      
+                      <span className="text-sm font-medium text-gray-800 truncate" title={task.fileName}>
+                        {task.fileName}
+                      </span>
+                      
+                      {task.source === 'cloud' && (
+                        <span title="从云端下载">
+                          <Cloud className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                        </span>
+                      )}
+                      {task.source === 'local' && (
+                        <span title="从本地下载">
+                          <Server className="h-3 w-3 text-gray-500 flex-shrink-0" />
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="text-xs text-gray-500">
+                      {formatFileSize(task.fileSize)}
+                      {task.endTime && task.startTime && (
+                        <span className="ml-2">
+                          · 用时 {formatDuration(task.endTime - task.startTime)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => cancelDownload(task.id)}
+                    className="ml-2 p-1 hover:bg-gray-200 rounded transition"
+                    title={task.status === 'downloading' ? '取消下载' : '移除'}
+                  >
+                    <X className="h-4 w-4 text-gray-500" />
+                  </button>
+                </div>
+
+                {/* 状态描述 */}
+                <div className="text-xs text-gray-600 mb-2">
+                  {task.status === 'waiting' && '等待下载...'}
+                  {task.status === 'downloading' && (
+                    <span>下载中... {formatFileSize(task.downloadedBytes)} / {formatFileSize(task.fileSize)}</span>
+                  )}
+                  {task.status === 'completed' && (
+                    <span className="text-green-600 font-medium">✓ 下载完成</span>
+                  )}
+                  {task.status === 'error' && (
+                    <span className="text-red-600">{task.error}</span>
+                  )}
+                  {task.status === 'cancelled' && (
+                    <span className="text-gray-600">已取消</span>
+                  )}
+                </div>
+
+                {/* 进度条 */}
+                {task.status === 'downloading' && (
+                  <div className="relative">
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span>进度</span>
+                      <span className="font-semibold">{task.progress}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${task.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}

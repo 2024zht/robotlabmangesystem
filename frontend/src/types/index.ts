@@ -98,6 +98,21 @@ export interface UploadTask {
   uploadId?: string; // 分块上传的会话ID
 }
 
+export interface DownloadTask {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  source: 'local' | 'cloud'; // 下载来源
+  status: 'waiting' | 'downloading' | 'completed' | 'error' | 'cancelled';
+  progress: number; // 0-100
+  downloadedBytes: number; // 已下载字节数
+  error?: string;
+  startTime?: number;
+  endTime?: number;
+  cancelTokenSource?: any; // axios CancelTokenSource
+  ebookId?: number; // 电子书ID（用于本地下载）
+}
+
 export interface Attendance {
   id: number;
   name: string;
