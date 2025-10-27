@@ -95,6 +95,7 @@ export interface UploadTask {
   endTime?: number;
   cancelTokenSource?: any; // axios CancelTokenSource
   uploadedFileId?: number; // 已上传文件的ID（用于取消时删除）
+  uploadId?: string; // 分块上传的会话ID
 }
 
 export interface Attendance {

@@ -115,7 +115,32 @@ export const ebookAPI = {
       },
       onUploadProgress,
       cancelToken: cancelTokenSource?.token,
+      timeout: 600000, // 10分钟超时，支持大文件上传
     }),
+  
+  // 分块上传（使用 FormData）
+  uploadChunk: (formData: FormData, cancelTokenSource?: any) =>
+    api.post('/ebooks/upload-chunk', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      cancelToken: cancelTokenSource?.token,
+      timeout: 120000, // 单个分块 2 分钟超时
+    }),
+  
+  // 合并分块
+  mergeChunks: (data: {
+    uploadId: string;
+    fileName: string;
+    fileSize: number;
+  }) =>
+    api.post('/ebooks/merge-chunks', data, {
+      timeout: 300000, // 合并操作 5 分钟超时
+    }),
+  
+  // 取消上传
+  cancelUpload: (uploadId: string) =>
+    api.delete(`/ebooks/cancel-upload/${uploadId}`),
   
   delete: (id: number) => api.delete(`/ebooks/${id}`),
   

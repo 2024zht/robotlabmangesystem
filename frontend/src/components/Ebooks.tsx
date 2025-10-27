@@ -104,47 +104,82 @@ const Ebooks: React.FC = () => {
     fetchEbooks();
   };
 
-  // 上传单个文件
+  // 上传单个文件（使用分块上传）
   const uploadSingleFile = async (task: UploadTask) => {
-    // 更新任务状态为上传中
-    updateTask(task.id, { status: 'uploading', serverProgress: 0 });
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB
+    const file = task.file;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const uploadId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const formData = new FormData();
-    formData.append('file', task.file);
-    
+    console.log(`开始分块上传: ${file.name}, 大小: ${file.size} bytes, 分块数: ${totalChunks}`);
+
+    // 更新任务状态为上传中，同时保存 uploadId
+    updateTask(task.id, { status: 'uploading', serverProgress: 0, uploadId });
+
     let uploadedFileId: number | undefined;
 
     try {
-      // 第一阶段：上传到服务器 (0-70%)
-      const response = await ebookAPI.upload(
-        formData,
-        (progressEvent) => {
-          if (progressEvent.total) {
-            const serverPercent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            const overallProgress = Math.round(serverPercent * 0.7); // 服务器占70%
-            
-            updateTask(task.id, {
-              serverProgress: serverPercent,
-              progress: overallProgress,
-            });
-          }
-        },
-        task.cancelTokenSource
-      );
+      // 第一阶段：分块上传到服务器 (0-70%)
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        console.log(`上传分块 ${chunkIndex + 1}/${totalChunks}, 大小: ${chunk.size} bytes`);
+
+        // 创建 FormData 上传分块
+        const formData = new FormData();
+        formData.append('chunk', chunk);
+        formData.append('chunkIndex', chunkIndex.toString());
+        formData.append('totalChunks', totalChunks.toString());
+        formData.append('fileName', file.name);
+        formData.append('fileSize', file.size.toString());
+        formData.append('uploadId', uploadId);
+
+        // 上传分块（会在取消时抛出异常）
+        await ebookAPI.uploadChunk(formData, task.cancelTokenSource);
+
+        // 更新进度（上传分块占 70%）
+        const chunkProgress = Math.round(((chunkIndex + 1) / totalChunks) * 70);
+        updateTask(task.id, {
+          serverProgress: Math.round(((chunkIndex + 1) / totalChunks) * 100),
+          progress: chunkProgress,
+        });
+      }
+
+      console.log(`所有分块上传完成，开始合并...`);
+
+      // 第二阶段：合并分块 (70-80%)
+      updateTask(task.id, { 
+        status: 'uploading',
+        serverProgress: 100,
+        progress: 75,
+      });
+
+      const mergeResponse = await ebookAPI.mergeChunks({
+        uploadId,
+        fileName: file.name,
+        fileSize: file.size,
+      });
+
+      console.log('文件合并完成:', mergeResponse.data);
 
       // 保存上传文件的ID（用于取消时删除）
-      uploadedFileId = response.data.id;
-      updateTask(task.id, { uploadedFileId });
+      uploadedFileId = mergeResponse.data.id;
+      updateTask(task.id, { 
+        uploadedFileId,
+        progress: 80,
+      });
 
-      // 第二阶段：同步到云端 (70-100%)
-      const needsB2Sync = response.data.needsB2Sync;
+      // 第三阶段：同步到云端 (80-100%)
+      const needsB2Sync = mergeResponse.data.needsB2Sync;
       
       if (needsB2Sync) {
         // 更新状态为同步中
-        updateTask(task.id, { status: 'syncing', serverProgress: 100 });
+        updateTask(task.id, { status: 'syncing' });
 
         // 模拟云端同步进度（因为后端是同步的，我们只能模拟）
-        await simulateCloudSync(task.id);
+        await simulateCloudSync(task.id, 80); // 从 80% 开始
       } else {
         // 不需要云端同步，直接完成
         updateTask(task.id, {
@@ -157,47 +192,63 @@ const Ebooks: React.FC = () => {
       }
 
     } catch (error: any) {
-      // 如果是取消请求，标记为已取消
+      // 如果是取消请求，标记为已取消并清理临时文件
       if (axios.isCancel(error)) {
+        console.log('上传被用户取消:', file.name);
+        
         updateTask(task.id, {
           status: 'cancelled',
           error: '上传已取消',
-
-          uploadedFileId, // 保存文件ID以便后续删除
-
+          uploadedFileId,
         });
-        // 如果有文件ID，删除已上传的文件
+
+        // 清理服务器上的临时分块
+        try {
+          await ebookAPI.cancelUpload(uploadId);
+          console.log('已清理临时分块文件:', uploadId);
+        } catch (cleanupError) {
+          console.error('清理临时文件失败:', cleanupError);
+        }
+
+        // 如果有文件ID，删除已合并的文件
         if (uploadedFileId) {
           try {
             await ebookAPI.delete(uploadedFileId);
             console.log('已删除取消上传的文件:', uploadedFileId);
-
-            // 刷新书籍列表
             fetchEbooks();
-
           } catch (deleteError) {
             console.error('删除文件失败:', deleteError);
           }
         }
       } else {
+        console.error('上传失败:', error);
+        
         updateTask(task.id, {
           status: 'error',
-          error: error.response?.data?.error || '上传失败',
-
-          uploadedFileId, // 保存文件ID以便后续删除
-
+          error: error.response?.data?.error || error.message || '上传失败',
+          uploadedFileId,
         });
+
+        // 上传失败时清理临时文件
+        try {
+          await ebookAPI.cancelUpload(uploadId);
+          console.log('已清理失败上传的临时文件:', uploadId);
+        } catch (cleanupError) {
+          console.error('清理临时文件失败:', cleanupError);
+        }
       }
     }
   };
 
   // 模拟云端同步进度
-  const simulateCloudSync = async (taskId: string) => {
+  const simulateCloudSync = async (taskId: string, startProgress: number = 70) => {
     return new Promise<void>((resolve) => {
       let cloudProgress = 0;
+      const totalRange = 100 - startProgress; // 剩余进度范围
+      
       const interval = setInterval(() => {
         cloudProgress += 10;
-        const overallProgress = 70 + Math.round(cloudProgress * 0.3); // 云端占30%
+        const overallProgress = startProgress + Math.round((cloudProgress / 100) * totalRange);
 
         updateTask(taskId, {
           cloudProgress,
@@ -234,12 +285,21 @@ const Ebooks: React.FC = () => {
     if (task) {
       // 如果任务正在上传或等待中，取消请求
       if (task.status === 'uploading' || task.status === 'waiting' || task.status === 'syncing') {
+        console.log('取消上传任务:', task.file.name);
         task.cancelTokenSource?.cancel('用户取消上传');
-
         
         // 等待一小段时间确保取消完成
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
 
+        // 如果有 uploadId，清理服务器上的临时分块文件
+        if (task.uploadId) {
+          try {
+            await ebookAPI.cancelUpload(task.uploadId);
+            console.log('已清理临时分块文件:', task.uploadId);
+          } catch (error) {
+            console.error('清理临时分块文件失败:', error);
+          }
+        }
       }
       
       // 如果文件已上传到服务器且任务未完成，删除文件
@@ -272,7 +332,7 @@ const Ebooks: React.FC = () => {
   // 清除失败和取消的任务（包括删除服务器文件）
   const clearFailedTasks = async () => {
     const failedTasks = uploadTasks.filter(
-      task => (task.status === 'error' || task.status === 'cancelled') && task.uploadedFileId
+      task => (task.status === 'error' || task.status === 'cancelled')
     );
     
     if (failedTasks.length === 0) {
@@ -280,12 +340,23 @@ const Ebooks: React.FC = () => {
       return;
     }
     
-    if (!window.confirm(`确定要删除 ${failedTasks.length} 个失败/取消的文件吗？`)) {
+    if (!window.confirm(`确定要删除 ${failedTasks.length} 个失败/取消的任务吗？`)) {
       return;
     }
     
-    // 删除所有失败任务的服务器文件
-    const deletePromises = failedTasks.map(async (task) => {
+    // 清理所有失败任务的文件（包括临时分块和已合并文件）
+    const cleanupPromises = failedTasks.map(async (task) => {
+      // 清理临时分块文件
+      if (task.uploadId) {
+        try {
+          await ebookAPI.cancelUpload(task.uploadId);
+          console.log('已清理临时分块:', task.uploadId);
+        } catch (error) {
+          console.error('清理临时分块失败:', task.uploadId, error);
+        }
+      }
+      
+      // 删除已合并的文件
       if (task.uploadedFileId) {
         try {
           await ebookAPI.delete(task.uploadedFileId);
@@ -296,7 +367,7 @@ const Ebooks: React.FC = () => {
       }
     });
     
-    await Promise.all(deletePromises);
+    await Promise.all(cleanupPromises);
     
     // 从UI中移除这些任务
     setUploadTasks((prev) =>
@@ -535,11 +606,11 @@ const Ebooks: React.FC = () => {
               >
                 清除已完成
               </button>
-              {uploadTasks.some(task => (task.status === 'error' || task.status === 'cancelled') && task.uploadedFileId) && (
+              {uploadTasks.some(task => (task.status === 'error' || task.status === 'cancelled') && (task.uploadedFileId || task.uploadId)) && (
                 <button
                   onClick={clearFailedTasks}
                   className="text-xs px-2 py-1 bg-red-500 bg-opacity-80 rounded hover:bg-opacity-100 transition"
-                  title="删除失败/取消任务的服务器文件"
+                  title="清理失败/取消任务的临时文件和服务器文件"
                 >
                   清理失败文件
                 </button>
@@ -590,7 +661,11 @@ const Ebooks: React.FC = () => {
                   <button
                     onClick={() => removeTask(task.id)}
                     className="ml-2 p-1 hover:bg-gray-200 rounded transition"
-                    title="移除"
+                    title={
+                      task.status === 'uploading' || task.status === 'syncing' || task.status === 'waiting'
+                        ? '取消上传'
+                        : '移除任务'
+                    }
                   >
                     <X className="h-4 w-4 text-gray-500" />
                   </button>
@@ -721,6 +796,8 @@ const Ebooks: React.FC = () => {
               页面仅显示本地数据库的书籍。每本书提供"本地"和"云端"两种预览/下载方式。
               删除操作仅删除本地文件，云端备份保持不变。
               支持的格式：PDF, EPUB, MOBI, AZW3, TXT, DOC, DOCX。最大文件大小：500MB。
+              <br />
+              <strong className="text-green-700">✓ 已启用分块上传：</strong>文件将自动分割为 50MB 的块进行上传，支持大文件且更稳定。
           </p>
         </div>
       )}
