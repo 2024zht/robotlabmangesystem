@@ -293,11 +293,9 @@ export const sendPointRequestNotification = async (
 
 // ==================== 设备借用相关邮件 ====================
 
-// 发送设备借用申请通知给管理员
-export const sendEquipmentRequestEmail = (
-  adminEmail: string,
+// 发送设备借用申请通知给所有管理员
+export const sendEquipmentRequestEmail = async (
   data: {
-    adminName: string;
     applicantName: string;
     studentId: string;
     className: string;
@@ -308,7 +306,20 @@ export const sendEquipmentRequestEmail = (
     reason: string;
     requestId: number;
   }
-): void => {
+): Promise<void> => {
+  // 从数据库获取所有管理员的邮箱
+  const adminEmails = await new Promise<string[]>((resolve, reject) => {
+    db.all('SELECT email FROM users WHERE isAdmin = 1', (err, rows: any[]) => {
+      if (err) reject(err);
+      else resolve(rows.map(row => row.email));
+    });
+  });
+
+  if (adminEmails.length === 0) {
+    console.warn('No admin emails found, skipping equipment request notification');
+    return;
+  }
+
   const baseUrl = process.env.FRONTEND_URL || 'http://localhost:2111';
   
   const subject = `【设备借用】新的借用申请待审批 - ${data.equipmentName}`;
@@ -318,7 +329,7 @@ export const sendEquipmentRequestEmail = (
       <h2 style="color: #1e40af;">📦 新的设备借用申请</h2>
       <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
         <p style="font-size: 16px; margin-bottom: 15px;">
-          ${data.adminName} 管理员您好，
+          管理员您好，
         </p>
         <p style="font-size: 16px; margin-bottom: 20px;">
           <strong>${data.applicantName}</strong> 提交了一个新的设备借用申请，请登录系统处理。
@@ -361,7 +372,8 @@ export const sendEquipmentRequestEmail = (
     </div>
   `;
   
-  sendEmail(adminEmail, subject, html);
+  await sendEmail(adminEmails, subject, html);
+  console.log(`Equipment request notification sent to ${adminEmails.length} admin(s)`);
 };
 
 // 发送借用申请批准通知给申请人

@@ -190,23 +190,23 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     );
     
     // 发送邮件通知给所有管理员
-    admins.forEach((admin: any) => {
-      sendEquipmentRequestEmail(
-        admin.email,
-        {
-          adminName: admin.name,
-          applicantName: applicant.name,
-          studentId: applicant.studentId,
-          className: applicant.className,
-          equipmentName: equipment.type_name,
-          equipmentCode: equipment.code,
-          borrowDate: borrow_date,
-          returnDate: return_date,
-          reason: reason,
-          requestId: insertId
-        }
-      );
-    });
+    try {
+      await sendEquipmentRequestEmail({
+        applicantName: applicant.name,
+        studentId: applicant.studentId,
+        className: applicant.className,
+        equipmentName: equipment.type_name,
+        equipmentCode: equipment.code,
+        borrowDate: borrow_date,
+        returnDate: return_date,
+        reason: reason,
+        requestId: insertId
+      });
+      console.log('设备借用申请邮件通知已发送给所有管理员');
+    } catch (emailError) {
+      console.error('发送邮件通知失败：', emailError);
+      // 邮件发送失败不影响申请提交
+    }
     
     res.status(201).json({
       message: '借用申请提交成功，请等待管理员审核',
