@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const users = await getAll<Omit<User, 'password'>>(
-      'SELECT id, username, name, studentId, className, email, isAdmin, points, createdAt FROM users ORDER BY points DESC'
+      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isMember, points, grade, createdAt FROM users ORDER BY points DESC'
     );
     res.json(users);
   } catch (error) {
@@ -24,7 +24,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = await getOne<Omit<User, 'password'>>(
-      'SELECT id, username, name, studentId, className, email, isAdmin, points, createdAt FROM users WHERE id = ?',
+      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isMember, points, grade, createdAt FROM users WHERE id = ?',
       [req.user!.userId]
     );
     
@@ -146,6 +146,93 @@ router.patch('/:id/admin', authenticateToken, requireAdmin, async (req: AuthRequ
     res.json({ message: '权限已更新' });
   } catch (error) {
     console.error('Update admin error:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 更新个人信息（用户自己）
+router.patch('/me/profile', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const { name, email, phone, className } = req.body;
+  const userId = req.user!.userId;
+
+  try {
+    // 构建更新字段
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (name !== undefined && name.trim()) {
+      updates.push('name = ?');
+      values.push(name.trim());
+    }
+    if (email !== undefined && email.trim()) {
+      updates.push('email = ?');
+      values.push(email.trim());
+    }
+    if (phone !== undefined && phone.trim()) {
+      updates.push('phone = ?');
+      values.push(phone.trim());
+    }
+    if (className !== undefined && className.trim()) {
+      updates.push('className = ?');
+      values.push(className.trim());
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: '没有需要更新的字段' });
+    }
+
+    values.push(userId);
+    const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
+    await runQuery(sql, values);
+
+    // 返回更新后的用户信息
+    const updatedUser = await getOne<Omit<User, 'password'>>(
+      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isMember, points, grade, createdAt FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({ message: '个人信息已更新', user: updatedUser });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: '服务器错误' });
+  }
+});
+
+// 修改自己的密码（用户自己）
+router.patch('/me/password', authenticateToken, async (req: AuthRequest, res: Response) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user!.userId;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: '请提供当前密码和新密码' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: '新密码长度至少6位' });
+  }
+
+  try {
+    // 获取用户当前密码
+    const user = await getOne<User>('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 验证当前密码
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: '当前密码错误' });
+    }
+
+    // 加密新密码
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // 更新密码
+    await runQuery('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, userId]);
+
+    res.json({ message: '密码已更新' });
+  } catch (error) {
+    console.error('Update password error:', error);
     res.status(500).json({ error: '服务器错误' });
   }
 });

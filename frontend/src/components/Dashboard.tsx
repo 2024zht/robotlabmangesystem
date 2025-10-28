@@ -125,7 +125,7 @@ const Dashboard: React.FC = () => {
     if (!manageUser) return;
 
     try {
-      await userAPI.updatePassword(manageUser.id, newPassword);
+      await userAPI.updateUserPassword(manageUser.id, newPassword);
       alert('密码修改成功');
       
       // 重置表单

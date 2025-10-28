@@ -13,6 +13,7 @@ import LeaveApproval from './components/LeaveApproval';
 import Ebooks from './components/Ebooks';
 import Attendance from './components/Attendance';
 import Equipment from './components/Equipment';
+import Profile from './components/Profile';
 
 const PrivateRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -50,6 +51,30 @@ const AdminRoute: React.FC<{ children: React.ReactElement }> = ({ children }) =>
   return children;
 };
 
+// 实验室成员路由 - 非成员会被重定向到设备借用页面
+const MemberRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+
+  // 非成员只能访问设备借用页面
+  if (!user.isMember) {
+    return <Navigate to="/equipment" />;
+  }
+
+  return children;
+};
+
 const PublicRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -61,7 +86,12 @@ const PublicRoute: React.FC<{ children: React.ReactElement }> = ({ children }) =
     );
   }
 
-  return user ? <Navigate to="/" /> : children;
+  // 非成员重定向到设备借用页面，成员重定向到首页
+  if (user) {
+    return user.isMember ? <Navigate to="/" /> : <Navigate to="/equipment" />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -74,12 +104,13 @@ function App() {
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
           
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-            <Route index element={<Dashboard />} />
-            <Route path="rules" element={<Rules />} />
-            <Route path="leaves" element={<LeaveRequest />} />
-            <Route path="ebooks" element={<Ebooks />} />
-            <Route path="attendance" element={<Attendance />} />
+            <Route index element={<MemberRoute><Dashboard /></MemberRoute>} />
+            <Route path="rules" element={<MemberRoute><Rules /></MemberRoute>} />
+            <Route path="leaves" element={<MemberRoute><LeaveRequest /></MemberRoute>} />
+            <Route path="ebooks" element={<MemberRoute><Ebooks /></MemberRoute>} />
+            <Route path="attendance" element={<MemberRoute><Attendance /></MemberRoute>} />
             <Route path="equipment" element={<Equipment />} />
+            <Route path="profile" element={<Profile />} />
             <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="admin/leave-approval" element={<AdminRoute><LeaveApproval /></AdminRoute>} />
           </Route>

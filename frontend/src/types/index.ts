@@ -6,7 +6,9 @@ export interface User {
   className: string;
   grade: string;
   email: string;
+  phone: string;
   isAdmin: boolean;
+  isMember: boolean;
   points: number;
   createdAt: string;
 }

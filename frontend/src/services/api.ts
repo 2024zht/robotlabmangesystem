@@ -32,8 +32,8 @@ api.interceptors.response.use(
 
 // 认证API
 export const authAPI = {
-  register: (username: string, name: string, studentId: string, className: string, grade: string, email: string, password: string) =>
-    api.post('/auth/register', { username, name, studentId, className, grade, email, password }),
+  register: (username: string, name: string, studentId: string, className: string, grade: string, email: string, phone: string, password: string, isMember: boolean) =>
+    api.post('/auth/register', { username, name, studentId, className, grade, email, phone, password, isMember }),
   
   login: (username: string, password: string) =>
     api.post<AuthResponse>('/auth/login', { username, password }),
@@ -45,6 +45,12 @@ export const userAPI = {
   
   getMe: () => api.get<User>('/users/me'),
   
+  updateProfile: (data: { name?: string; email?: string; phone?: string; className?: string }) =>
+    api.patch('/users/me/profile', data),
+  
+  updatePassword: (currentPassword: string, newPassword: string) =>
+    api.patch('/users/me/password', { currentPassword, newPassword }),
+  
   deleteUser: (id: number) => api.delete(`/users/${id}`),
   
   updatePoints: (id: number, points: number, reason: string) =>
@@ -53,7 +59,7 @@ export const userAPI = {
   setAdmin: (id: number, isAdmin: boolean) =>
     api.patch(`/users/${id}/admin`, { isAdmin }),
   
-  updatePassword: (id: number, newPassword: string) =>
+  updateUserPassword: (id: number, newPassword: string) =>
     api.patch(`/users/${id}/password`, { newPassword }),
   
   getLogs: (id: number) => api.get<PointLog[]>(`/users/${id}/logs`),

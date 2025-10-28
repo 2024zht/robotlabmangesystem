@@ -15,14 +15,16 @@ router.post('/register',
   body('className').trim().notEmpty().withMessage('班级不能为空'),
   body('grade').trim().notEmpty().withMessage('年级不能为空'),
   body('email').isEmail().withMessage('邮箱格式不正确'),
+  body('phone').trim().notEmpty().withMessage('电话号码不能为空'),
   body('password').isLength({ min: 6 }).withMessage('密码长度至少为6个字符'),
+  body('isMember').optional().isBoolean().withMessage('实验室成员标识格式不正确'),
   async (req: Request, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { username, name, studentId, className, grade, email, password } = req.body;
+    const { username, name, studentId, className, grade, email, phone, password, isMember = true } = req.body;
 
     try {
       // 检查用户名、学号或邮箱是否已存在
@@ -40,8 +42,8 @@ router.post('/register',
 
       // 创建用户
       await runQuery(
-        'INSERT INTO users (username, name, studentId, className, grade, email, password, isAdmin, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [username, name, studentId, className, grade, email, hashedPassword, 0, 0]
+        'INSERT INTO users (username, name, studentId, className, grade, email, phone, password, isAdmin, isMember, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [username, name, studentId, className, grade, email, phone, hashedPassword, 0, isMember ? 1 : 0, 0]
       );
 
       res.status(201).json({ message: '注册成功' });
@@ -100,7 +102,9 @@ router.post('/login',
           className: user.className,
           grade: user.grade,
           email: user.email,
+          phone: user.phone,
           isAdmin: Boolean(user.isAdmin),
+          isMember: Boolean(user.isMember),
           points: user.points
         }
       });

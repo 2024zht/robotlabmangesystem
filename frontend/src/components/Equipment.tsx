@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Calendar, FileText, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Package, Calendar, FileText, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { equipmentTypeAPI, equipmentInstanceAPI, equipmentRequestAPI } from '../services/api';
 import { EquipmentType, EquipmentInstance, EquipmentRequest } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 const Equipment: React.FC = () => {
+  const { user } = useAuth();
   const [types, setTypes] = useState<EquipmentType[]>([]);
   const [selectedType, setSelectedType] = useState<EquipmentType | null>(null);
   const [instances, setInstances] = useState<EquipmentInstance[]>([]);
@@ -170,6 +172,18 @@ const Equipment: React.FC = () => {
           我的申请 ({myRequests.length})
         </button>
       </div>
+
+      {!user?.isMember && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-blue-800">您当前是外部访客</p>
+            <p className="text-sm text-blue-700 mt-1">
+              您可以浏览和申请借用设备。如需访问其他功能（积分、请假、电子书等），请联系实验室管理员。
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12">

@@ -5,8 +5,10 @@ export interface User {
   studentId: string;
   className: string;
   email: string;
+  phone: string;
   password: string;
   isAdmin: boolean;
+  isMember: boolean;
   points: number;
   grade: string;
   createdAt: string;
