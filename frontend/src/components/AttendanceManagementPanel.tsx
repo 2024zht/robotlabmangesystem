@@ -33,6 +33,7 @@ const AttendanceManagementPanel: React.FC = () => {
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   const [triggeringId, setTriggeringId] = useState<number | null>(null);
   const [customTime, setCustomTime] = useState('21:15');
+  const [gettingLocation, setGettingLocation] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -160,6 +161,52 @@ const AttendanceManagementPanel: React.FC = () => {
       targetGrades: ['2024', '2025'],
       targetUserIds: [],
     });
+  };
+
+  // 获取当前GPS坐标并自动填充到表单
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('您的浏览器不支持地理定位');
+      return;
+    }
+
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        
+        // 自动填充到表单
+        setFormData(prev => ({
+          ...prev,
+          latitude: latitude,
+          longitude: longitude
+        }));
+
+        console.log('📍 已获取当前GPS位置并填充到表单:', {
+          纬度: latitude,
+          经度: longitude,
+          精度: accuracy + '米',
+          时间: new Date().toLocaleString('zh-CN')
+        });
+
+        alert(`✅ 当前GPS坐标已自动填充！\n\n纬度: ${latitude}\n经度: ${longitude}\n精度: ${Math.round(accuracy)}米`);
+        setGettingLocation(false);
+      },
+      (error) => {
+        console.error('获取位置失败:', error);
+        setGettingLocation(false);
+        if (error.code === error.PERMISSION_DENIED) {
+          alert('❌ 位置权限被拒绝\n\n请在浏览器设置中允许访问位置信息');
+        } else {
+          alert('❌ 获取位置失败\n\n请确保已开启GPS/定位服务');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
   };
 
   const handleGradeToggle = (grade: string) => {
@@ -350,33 +397,52 @@ const AttendanceManagementPanel: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    纬度 *
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    GPS坐标 *
                   </label>
-                  <input
-                    type="number"
-                    step="0.000001"
-                    value={formData.latitude}
-                    onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
+                  <button
+                    type="button"
+                    onClick={getCurrentLocation}
+                    disabled={gettingLocation}
+                    className="px-3 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 transition disabled:bg-gray-400 flex items-center"
+                  >
+                    <MapPin className="h-3 w-3 mr-1" />
+                    {gettingLocation ? '定位中...' : '获取当前坐标'}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    经度 *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.000001"
-                    value={formData.longitude}
-                    onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      纬度
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={formData.latitude}
+                      onChange={(e) => setFormData({ ...formData, latitude: parseFloat(e.target.value) })}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      经度
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={formData.longitude}
+                      onChange={(e) => setFormData({ ...formData, longitude: parseFloat(e.target.value) })}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  💡 点击"获取当前坐标"按钮，系统会自动获取您当前的GPS坐标
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
