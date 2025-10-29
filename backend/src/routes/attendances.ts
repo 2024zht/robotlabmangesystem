@@ -529,6 +529,17 @@ router.post('/:triggerId/sign', authenticateToken, async (req: AuthRequest, res:
       longitude
     );
 
+    // 输出地理位置信息用于调试
+    console.log('🗺️ 签到位置验证:', {
+      用户ID: userId,
+      用户位置: { 纬度: latitude, 经度: longitude },
+      目标位置: { 纬度: trigger.latitude, 经度: trigger.longitude },
+      距离: Math.round(distance) + '米',
+      要求半径: trigger.radius + '米',
+      验证结果: distance <= trigger.radius ? '✅ 通过' : '❌ 超出范围',
+      时间: new Date().toLocaleString('zh-CN')
+    });
+
     if (distance > trigger.radius) {
       return res.status(400).json({
         error: '您不在指定的签到区域内',

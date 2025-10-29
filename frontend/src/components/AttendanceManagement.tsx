@@ -19,8 +19,8 @@ const AttendanceManagement: React.FC = () => {
     dateStart: '',
     dateEnd: '',
     locationName: '',
-    latitude: 36.546431870593665,
-    longitude: 116.83040694925626,
+    latitude: 36.54651556687031,
+    longitude: 116.83038792943512,
     radius: 100,
     penaltyPoints: 5,
   });
@@ -125,8 +125,8 @@ const AttendanceManagement: React.FC = () => {
       dateStart: '',
       dateEnd: '',
       locationName: '',
-      latitude: 36.546431870593665,
-      longitude: 116.83040694925626,
+      latitude: 36.54651556687031,
+      longitude: 116.83038792943512,
       radius: 100,
       penaltyPoints: 5,
     });

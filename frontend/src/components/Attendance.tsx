@@ -41,6 +41,13 @@ const AttendancePage: React.FC = () => {
         async (position) => {
           try {
             const { latitude, longitude } = position.coords;
+            // 输出地理位置信息用于调试
+            console.log('🗺️ 用户签到位置信息:', {
+              纬度: latitude,
+              经度: longitude,
+              精度: position.coords.accuracy + '米',
+              时间: new Date().toLocaleString('zh-CN')
+            });
             await attendanceAPI.sign(triggerId, latitude, longitude);
             alert('签到成功！');
             fetchAttendances();
