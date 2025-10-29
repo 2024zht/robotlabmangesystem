@@ -8,10 +8,42 @@ const AttendancePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState(false);
   const [locationError, setLocationError] = useState<string>('');
+  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
 
   useEffect(() => {
     fetchAttendances();
   }, []);
+
+  // 获取当前位置（用于调试和设置目标坐标）
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('您的浏览器不支持地理定位');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        console.log('📍 当前GPS位置 (WGS84):', {
+          纬度: latitude,
+          经度: longitude,
+          精度: accuracy + '米',
+          时间: new Date().toLocaleString('zh-CN')
+        });
+        alert(`当前GPS坐标已获取！\n\n纬度: ${latitude}\n经度: ${longitude}\n精度: ${Math.round(accuracy)}米\n\n请复制这些坐标设置为点名目标位置`);
+      },
+      (error) => {
+        console.error('获取位置失败:', error);
+        alert('获取位置失败，请确保已开启定位权限');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  };
 
   const fetchAttendances = async () => {
     try {
@@ -30,75 +62,67 @@ const AttendancePage: React.FC = () => {
     setLocationError('');
 
     try {
-      // 使用百度地图定位API（更准确）
-      const BMapGL = (window as any).BMapGL;
-      
-      if (!BMapGL) {
-        setLocationError('百度地图API加载失败，请刷新页面重试');
+      // 使用浏览器原生定位（返回WGS84坐标，与后端一致）
+      if (!navigator.geolocation) {
+        setLocationError('您的浏览器不支持地理定位');
         setSigning(false);
         return;
       }
 
-      const geolocation = new BMapGL.Geolocation();
-      
-      geolocation.getCurrentPosition((result: any) => {
-        if (geolocation.getStatus() === 0) {
-          // 定位成功
-          const latitude = result.latitude;
-          const longitude = result.longitude;
-          const accuracy = result.accuracy;
-
-          // 输出地理位置信息用于调试
-          console.log('🗺️ 用户签到位置信息（百度地图）:', {
-            纬度: latitude,
-            经度: longitude,
-            精度: accuracy + '米',
-            定位方式: result.locationType || '未知',
-            时间: new Date().toLocaleString('zh-CN')
-          });
-
-          // 发送签到请求
-          attendanceAPI.sign(triggerId, latitude, longitude)
-            .then(() => {
-              alert('签到成功！');
-              fetchAttendances();
-            })
-            .catch((error: any) => {
-              if (error.response?.data?.error) {
-                setLocationError(error.response.data.error);
-                if (error.response.data.distance) {
-                  setLocationError(
-                    `${error.response.data.error}\n当前距离：${error.response.data.distance}米，要求：${error.response.data.required}米内`
-                  );
-                }
-              } else {
-                setLocationError('签到失败，请稍后重试');
-              }
-            })
-            .finally(() => {
-              setSigning(false);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude, accuracy } = position.coords;
+            
+            // 输出地理位置信息用于调试
+            console.log('🗺️ 用户签到位置信息（原生GPS WGS84）:', {
+              纬度: latitude,
+              经度: longitude,
+              精度: accuracy + '米',
+              时间: new Date().toLocaleString('zh-CN')
             });
-        } else {
-          // 定位失败
-          setSigning(false);
-          const status = geolocation.getStatus();
-          console.error('百度地图定位失败，状态码:', status);
-          
-          if (status === 2) {
-            setLocationError('⚠️ 位置权限被拒绝\n\n请按以下步骤开启：\n1. 点击地址栏左侧的🔒图标\n2. 找到"位置"权限设置为"允许"\n3. 刷新页面重试\n\n如果是手机：请在系统设置中允许浏览器访问位置');
-          } else if (status === 6) {
-            setLocationError('❌ 无法获取您的位置信息\n\n可能原因：\n• GPS信号弱（建议到室外或窗边）\n• 定位服务未开启\n• 网络连接问题');
-          } else if (status === 8) {
-            setLocationError('⏱️ 获取位置信息超时\n\n请检查：\n• GPS/定位是否开启\n• 是否在室内深处（建议到窗边）\n• 稍后重试');
-          } else {
-            setLocationError(`定位失败（错误码: ${status}），请稍后重试`);
+
+            await attendanceAPI.sign(triggerId, latitude, longitude);
+            alert('签到成功！');
+            fetchAttendances();
+          } catch (error: any) {
+            if (error.response?.data?.error) {
+              setLocationError(error.response.data.error);
+              if (error.response.data.distance) {
+                setLocationError(
+                  `${error.response.data.error}\n当前距离：${error.response.data.distance}米，要求：${error.response.data.required}米内`
+                );
+              }
+            } else {
+              setLocationError('签到失败，请稍后重试');
+            }
+          } finally {
+            setSigning(false);
           }
+        },
+        (error) => {
+          setSigning(false);
+          console.error('GPS定位失败:', error);
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              setLocationError('⚠️ 位置权限被拒绝\n\n请按以下步骤开启：\n1. 点击地址栏左侧的🔒图标\n2. 找到"位置"权限设置为"允许"\n3. 刷新页面重试\n\n如果是手机：请在系统设置中允许浏览器访问位置');
+              break;
+            case error.POSITION_UNAVAILABLE:
+              setLocationError('❌ 无法获取您的位置信息\n\n可能原因：\n• GPS信号弱（建议到室外或窗边）\n• 定位服务未开启\n• 网络连接问题');
+              break;
+            case error.TIMEOUT:
+              setLocationError('⏱️ 获取位置信息超时\n\n请检查：\n• GPS/定位是否开启\n• 是否在室内深处（建议到窗边）\n• 稍后重试');
+              break;
+            default:
+              setLocationError('获取位置时发生未知错误，请稍后重试');
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
         }
-      }, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      });
+      );
     } catch (error) {
       console.error('定位异常:', error);
       setSigning(false);
@@ -159,7 +183,28 @@ const AttendancePage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-800">点名签到</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800">点名签到</h2>
+        <button
+          onClick={getCurrentLocation}
+          className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition flex items-center"
+          title="获取当前GPS坐标（用于设置点名目标位置）"
+        >
+          <Navigation className="h-4 w-4 mr-2" />
+          获取当前坐标
+        </button>
+      </div>
+
+      {currentLocation && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+          <h3 className="font-medium text-purple-800 mb-2">📍 当前GPS坐标 (WGS84标准)</h3>
+          <div className="text-sm text-purple-700 space-y-1">
+            <p>纬度: <code className="bg-purple-100 px-2 py-1 rounded">{currentLocation.lat}</code></p>
+            <p>经度: <code className="bg-purple-100 px-2 py-1 rounded">{currentLocation.lng}</code></p>
+            <p className="text-xs text-purple-600 mt-2">💡 复制这些坐标到点名管理中设置为目标位置</p>
+          </div>
+        </div>
+      )}
 
       {locationError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
