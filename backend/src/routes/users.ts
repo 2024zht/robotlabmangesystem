@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const users = await getAll<Omit<User, 'password'>>(
-      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isMember, points, grade, createdAt FROM users ORDER BY points DESC'
+      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isSuperAdmin, isMember, points, grade, createdAt FROM users ORDER BY points DESC'
     );
     res.json(users);
   } catch (error) {
@@ -24,7 +24,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const user = await getOne<Omit<User, 'password'>>(
-      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isMember, points, grade, createdAt FROM users WHERE id = ?',
+      'SELECT id, username, name, studentId, className, email, phone, isAdmin, isSuperAdmin, isMember, points, grade, createdAt FROM users WHERE id = ?',
       [req.user!.userId]
     );
     
@@ -66,12 +66,22 @@ router.patch('/:id/points', authenticateToken, requireAdmin, async (req: AuthReq
     return res.status(400).json({ error: '积分必须是数字' });
   }
 
+  // 验证单次积分修改不超过200分（正负）
+  if (Math.abs(points) > 200) {
+    return res.status(400).json({ error: '单次积分修改不能超过200分（加分或扣分）' });
+  }
+
   try {
-    // 获取当前用户积分
-    const user = await getOne<User>('SELECT points FROM users WHERE id = ?', [userId]);
+    // 获取目标用户信息
+    const user = await getOne<User>('SELECT points, isAdmin, isSuperAdmin FROM users WHERE id = ?', [userId]);
     
     if (!user) {
       return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 权限检查：普通管理员不能修改其他管理员
+    if (user.isAdmin && !req.user!.isSuperAdmin) {
+      return res.status(403).json({ error: '没有权限修改管理员的积分，请联系超级管理员' });
     }
 
     const newPoints = user.points + points;
@@ -81,7 +91,7 @@ router.patch('/:id/points', authenticateToken, requireAdmin, async (req: AuthReq
 
     // 记录积分变动
     await runQuery(
-      'INSERT INTO point_logs (userId, points, reason, createdBy) VALUES (?, ?, ?, ?)',
+      'INSERT INTO point_logs (userId, points, reason, createdBy, createdAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
       [userId, points, reason || '管理员调整', req.user!.userId]
     );
 
@@ -142,6 +152,28 @@ router.patch('/:id/admin', authenticateToken, requireAdmin, async (req: AuthRequ
   }
 
   try {
+    // 获取目标用户信息
+    const targetUser = await getOne<User>('SELECT isAdmin, isSuperAdmin FROM users WHERE id = ?', [userId]);
+    
+    if (!targetUser) {
+      return res.status(404).json({ error: '用户不存在' });
+    }
+
+    // 权限检查：普通管理员不能修改其他管理员的权限
+    if (targetUser.isAdmin && !req.user!.isSuperAdmin) {
+      return res.status(403).json({ error: '没有权限修改管理员的权限，请联系超级管理员' });
+    }
+
+    // 不能移除超级管理员的管理员权限
+    if (targetUser.isSuperAdmin && !isAdmin) {
+      return res.status(403).json({ error: '不能移除超级管理员的管理员权限' });
+    }
+
+    // 只有超级管理员可以设置或取消管理员权限
+    if (!req.user!.isSuperAdmin) {
+      return res.status(403).json({ error: '只有超级管理员可以设置或取消管理员权限' });
+    }
+
     await runQuery('UPDATE users SET isAdmin = ? WHERE id = ?', [isAdmin ? 1 : 0, userId]);
     res.json({ message: '权限已更新' });
   } catch (error) {
@@ -313,7 +345,7 @@ router.post('/requests', authenticateToken, async (req: AuthRequest, res: Respon
     // 插入申诉记录
     const requestId = await new Promise<number>((resolve, reject) => {
       db.run(
-        'INSERT INTO point_requests (userId, points, reason, status) VALUES (?, ?, ?, ?)',
+        'INSERT INTO point_requests (userId, points, reason, status, createdAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
         [req.user!.userId, points, reason, 'pending'],
         function (err) {
           if (err) reject(err);
@@ -413,7 +445,7 @@ router.patch('/requests/:id', authenticateToken, requireAdmin, async (req: AuthR
 
     // 更新申诉状态
     await runQuery(
-      'UPDATE point_requests SET status = ?, respondedAt = CURRENT_TIMESTAMP, respondedBy = ?, adminComment = ? WHERE id = ?',
+      'UPDATE point_requests SET status = ?, respondedAt = datetime(\'now\', \'localtime\'), respondedBy = ?, adminComment = ? WHERE id = ?',
       [status, req.user!.userId, adminComment || '', requestId]
     );
 
@@ -426,7 +458,7 @@ router.patch('/requests/:id', authenticateToken, requireAdmin, async (req: AuthR
         
         // 记录积分变动
         await runQuery(
-          'INSERT INTO point_logs (userId, points, reason, createdBy) VALUES (?, ?, ?, ?)',
+          'INSERT INTO point_logs (userId, points, reason, createdBy, createdAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
           [request.userId, request.points, `申诉通过: ${request.reason}`, req.user!.userId]
         );
       }
@@ -493,7 +525,7 @@ router.post('/batch-import', authenticateToken, requireAdmin, async (req: AuthRe
         
         // 记录积分变动
         await runQuery(
-          'INSERT INTO point_logs (userId, points, reason, createdBy) VALUES (?, ?, ?, ?)',
+          'INSERT INTO point_logs (userId, points, reason, createdBy, createdAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
           [user.id, parseInt(points), reason || '批量导入', req.user!.userId]
         );
 

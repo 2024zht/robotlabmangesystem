@@ -8,6 +8,7 @@ export interface User {
   email: string;
   phone: string;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isMember: boolean;
   points: number;
   createdAt: string;
@@ -83,6 +84,18 @@ export interface Ebook {
   b2Synced: boolean;
   b2Path?: string;
   fromWorker?: boolean; // 标记是否从Worker获取（无法删除）
+  categoryId?: number;
+  categoryName?: string;
+}
+
+export interface EbookCategory {
+  id: number;
+  name: string;
+  description?: string;
+  createdBy: number;
+  createdByName?: string;
+  createdAt: string;
+  bookCount?: number;
 }
 
 export interface UploadTask {

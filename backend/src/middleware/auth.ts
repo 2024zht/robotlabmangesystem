@@ -38,3 +38,10 @@ export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction
   next();
 };
 
+export const requireSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user?.isSuperAdmin) {
+    return res.status(403).json({ error: '需要超级管理员权限' });
+  }
+  next();
+};
+

@@ -88,7 +88,8 @@ router.post('/login',
       const payload: JWTPayload = {
         userId: user.id,
         username: user.username,
-        isAdmin: Boolean(user.isAdmin)
+        isAdmin: Boolean(user.isAdmin),
+        isSuperAdmin: Boolean(user.isSuperAdmin)
       };
       const token = jwt.sign(payload, secret, { expiresIn: '7d' });
 
@@ -104,6 +105,7 @@ router.post('/login',
           email: user.email,
           phone: user.phone,
           isAdmin: Boolean(user.isAdmin),
+          isSuperAdmin: Boolean(user.isSuperAdmin),
           isMember: Boolean(user.isMember),
           points: user.points
         }

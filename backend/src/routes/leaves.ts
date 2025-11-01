@@ -27,7 +27,7 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     // 插入请假记录
     const leaveId = await new Promise<number>((resolve, reject) => {
       db.run(
-        'INSERT INTO leaves (userId, leaveType, startTime, endTime, duration, reason) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO leaves (userId, leaveType, startTime, endTime, duration, reason, createdAt) VALUES (?, ?, ?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
         [userId, leaveType, startTime, endTime, duration, reason],
         function (err) {
           if (err) reject(err);
@@ -162,7 +162,7 @@ router.patch('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, r
     // 更新审批状态
     await new Promise<void>((resolve, reject) => {
       db.run(
-        'UPDATE leaves SET status = ?, respondedAt = CURRENT_TIMESTAMP, respondedBy = ?, rejectReason = ? WHERE id = ?',
+        'UPDATE leaves SET status = ?, respondedAt = datetime(\'now\', \'localtime\'), respondedBy = ?, rejectReason = ? WHERE id = ?',
         [status, adminId, rejectReason || null, id],
         function (err) {
           if (err) reject(err);

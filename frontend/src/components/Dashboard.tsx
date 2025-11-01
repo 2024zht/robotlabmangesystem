@@ -167,6 +167,12 @@ const Dashboard: React.FC = () => {
       return;
     }
 
+    // 验证单次积分修改不超过200分（正负）
+    if (Math.abs(points) > 200) {
+      alert('单次积分修改不能超过200分（加分或扣分）');
+      return;
+    }
+
     try {
       await userAPI.updatePoints(targetUser.id, points, reason);
       alert('积分修改成功');
@@ -194,6 +200,12 @@ const Dashboard: React.FC = () => {
   const handleRowClick = async (user: User, e: React.MouseEvent) => {
     // 如果点击的是按钮，不触发行点击
     if ((e.target as HTMLElement).closest('button')) {
+      return;
+    }
+
+    // 权限检查：只有管理员或本人可以查看积分历史
+    if (!currentUser?.isAdmin && currentUser?.id !== user.id) {
+      alert('您只能查看自己的积分历史');
       return;
     }
 
@@ -508,7 +520,10 @@ const Dashboard: React.FC = () => {
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       placeholder="例如: 10 或 -5"
+                      min="-200"
+                      max="200"
                     />
+                    <p className="text-xs text-gray-500 mt-1">⚠️ 单次积分修改范围：-200 ~ +200</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -612,7 +627,15 @@ const Dashboard: React.FC = () => {
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                           <span>👤 操作者: {log.createdByUsername}</span>
-                          <span>📅 {new Date(log.createdAt).toLocaleString('zh-CN')}</span>
+                          <span>📅 {new Date(log.createdAt).toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                          })}</span>
                         </div>
                       </div>
                     </div>
@@ -819,7 +842,15 @@ const Dashboard: React.FC = () => {
                             </div>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
                               <span>👤 操作者: {log.createdByUsername}</span>
-                              <span>📅 {new Date(log.createdAt).toLocaleString('zh-CN')}</span>
+                              <span>📅 {new Date(log.createdAt).toLocaleString('zh-CN', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                              })}</span>
                             </div>
                           </div>
                           <button
@@ -935,7 +966,10 @@ const Dashboard: React.FC = () => {
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                           placeholder="例如: 10 或 -5"
+                          min="-200"
+                          max="200"
                         />
+                        <p className="text-xs text-gray-500 mt-1">⚠️ 单次积分修改范围：-200 ~ +200</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">

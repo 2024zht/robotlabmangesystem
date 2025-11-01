@@ -1,21 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { ebookAPI } from '../services/api';
-import { Ebook, UploadTask, DownloadTask } from '../types';
+import { Ebook, EbookCategory, UploadTask, DownloadTask } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { Book, Download, Upload, HardDrive, X, CheckCircle, AlertCircle, Clock, Cloud, Server, Eye, ExternalLink, Trash2 } from 'lucide-react';
+import { Book, Download, Upload, HardDrive, X, CheckCircle, AlertCircle, Clock, Cloud, Server, Eye, ExternalLink, Trash2, FolderOpen, Plus, Edit2, Tag } from 'lucide-react';
 import axios from 'axios';
 
 const Ebooks: React.FC = () => {
   const [ebooks, setEbooks] = useState<Ebook[]>([]);
+  const [categories, setCategories] = useState<EbookCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [previewEbook, setPreviewEbook] = useState<Ebook | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<EbookCategory | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDesc, setNewCategoryDesc] = useState('');
   const { user } = useAuth();
 
   useEffect(() => {
     fetchEbooks();
+    fetchCategories();
   }, []);
 
   const fetchEbooks = async () => {
@@ -28,6 +35,101 @@ const Ebooks: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchCategories = async () => {
+    try {
+      const { data } = await ebookAPI.getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error('获取分类列表失败:', error);
+    }
+  };
+
+  // 创建分类
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      alert('请输入分类名称');
+      return;
+    }
+
+    try {
+      await ebookAPI.createCategory(newCategoryName, newCategoryDesc);
+      alert('分类创建成功');
+      setNewCategoryName('');
+      setNewCategoryDesc('');
+      fetchCategories();
+    } catch (error: any) {
+      console.error('创建分类失败:', error);
+      alert(error.response?.data?.error || '创建分类失败');
+    }
+  };
+
+  // 更新分类
+  const handleUpdateCategory = async () => {
+    if (!editingCategory || !newCategoryName.trim()) {
+      alert('请输入分类名称');
+      return;
+    }
+
+    try {
+      await ebookAPI.updateCategory(editingCategory.id, newCategoryName, newCategoryDesc);
+      alert('分类更新成功');
+      setEditingCategory(null);
+      setNewCategoryName('');
+      setNewCategoryDesc('');
+      fetchCategories();
+    } catch (error: any) {
+      console.error('更新分类失败:', error);
+      alert(error.response?.data?.error || '更新分类失败');
+    }
+  };
+
+  // 删除分类
+  const handleDeleteCategory = async (id: number) => {
+    if (!window.confirm('确定要删除这个分类吗？该分类下的书籍将被移至"未分类"。')) {
+      return;
+    }
+
+    try {
+      await ebookAPI.deleteCategory(id);
+      alert('分类删除成功');
+      fetchCategories();
+    } catch (error: any) {
+      console.error('删除分类失败:', error);
+      alert(error.response?.data?.error || '删除分类失败');
+    }
+  };
+
+  // 更新书籍分类
+  const handleUpdateBookCategory = async (bookId: number, categoryId: number) => {
+    try {
+      await ebookAPI.updateBookCategory(bookId, categoryId);
+      alert('分类更新成功');
+      fetchEbooks();
+    } catch (error: any) {
+      console.error('更新书籍分类失败:', error);
+      alert(error.response?.data?.error || '更新书籍分类失败');
+    }
+  };
+
+  // 开始编辑分类
+  const startEditCategory = (category: EbookCategory) => {
+    setEditingCategory(category);
+    setNewCategoryName(category.name);
+    setNewCategoryDesc(category.description || '');
+  };
+
+  // 取消编辑
+  const cancelEdit = () => {
+    setEditingCategory(null);
+    setNewCategoryName('');
+    setNewCategoryDesc('');
+  };
+
+  // 筛选书籍
+  const filteredEbooks = selectedCategory
+    ? ebooks.filter(book => book.categoryId === selectedCategory)
+    : ebooks;
 
   // 删除电子书
   const handleDelete = async (ebook: Ebook) => {
@@ -635,6 +737,130 @@ const Ebooks: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      {/* 分类管理弹窗 */}
+      {showCategoryManager && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold flex items-center">
+                <FolderOpen className="h-5 w-5 mr-2 text-purple-600" />
+                分类管理
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCategoryManager(false);
+                  cancelEdit();
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* 创建/编辑分类表单 */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold mb-3">
+                  {editingCategory ? '编辑分类' : '创建新分类'}
+                </h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">分类名称</label>
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      placeholder="例如：编程语言"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">描述（可选）</label>
+                    <textarea
+                      value={newCategoryDesc}
+                      onChange={(e) => setNewCategoryDesc(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      rows={2}
+                      placeholder="例如：C++、Python、Java等编程语言相关书籍"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    {editingCategory ? (
+                      <>
+                        <button
+                          onClick={handleUpdateCategory}
+                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          保存修改
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={handleCreateCategory}
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        创建分类
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 分类列表 */}
+              <div>
+                <h4 className="font-semibold mb-3">现有分类</h4>
+                <div className="space-y-2">
+                  {categories.map((category) => (
+                    <div
+                      key={category.id}
+                      className="bg-white border border-gray-200 rounded-lg p-3 flex items-start justify-between"
+                    >
+                      <div className="flex-1">
+                        <h5 className="font-semibold">{category.name}</h5>
+                        {category.description && (
+                          <p className="text-sm text-gray-600 mt-1">{category.description}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          包含 {category.bookCount || 0} 本书籍
+                        </p>
+                      </div>
+                      <div className="flex gap-2 ml-2">
+                        <button
+                          onClick={() => startEditCategory(category)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="编辑"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        {category.name !== '未分类' && (
+                          <button
+                            onClick={() => handleDeleteCategory(category.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                            title="删除"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {categories.length === 0 && (
+                    <p className="text-center py-8 text-gray-500">暂无分类</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 预览弹窗 */}
       {previewEbook && (
         <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-75 flex items-center justify-center p-4">
@@ -1001,6 +1227,13 @@ const Ebooks: React.FC = () => {
         
         {user?.isAdmin && (
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+            >
+              <FolderOpen className="h-5 w-5 mr-2" />
+              分类管理
+            </button>
             <input
               type="file"
               id="fileInput"
@@ -1028,6 +1261,33 @@ const Ebooks: React.FC = () => {
         )}
       </div>
 
+      {/* 分类筛选器 */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <button
+          onClick={() => setSelectedCategory(null)}
+          className={`px-4 py-2 rounded-lg transition ${
+            selectedCategory === null
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          全部 ({ebooks.length})
+        </button>
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            onClick={() => setSelectedCategory(category.id)}
+            className={`px-4 py-2 rounded-lg transition ${
+              selectedCategory === category.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {category.name} ({category.bookCount || 0})
+          </button>
+        ))}
+      </div>
+
       {user?.isAdmin && (
         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
@@ -1043,8 +1303,8 @@ const Ebooks: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {ebooks.length > 0 ? (
-          ebooks.map((ebook, index) => (
+        {filteredEbooks.length > 0 ? (
+          filteredEbooks.map((ebook, index) => (
             <div
               key={ebook.id || ebook.filename || index}
               className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow"
@@ -1071,6 +1331,31 @@ const Ebooks: React.FC = () => {
                 <p className="text-xs text-gray-500">
                   {new Date(ebook.uploadedAt).toLocaleDateString('zh-CN')}
                 </p>
+                {/* 分类显示和修改 */}
+                {user?.isAdmin && ebook.id ? (
+                  <div className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    <select
+                      value={ebook.categoryId || ''}
+                      onChange={(e) => handleUpdateBookCategory(ebook.id!, parseInt(e.target.value))}
+                      className="text-xs border border-gray-300 rounded px-1 py-0.5 flex-1"
+                    >
+                      <option value="">选择分类...</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  ebook.categoryName && (
+                    <p className="flex items-center text-xs">
+                      <Tag className="h-3 w-3 mr-1" />
+                      {ebook.categoryName}
+                    </p>
+                  )
+                )}
               </div>
 
               <div className="space-y-2">

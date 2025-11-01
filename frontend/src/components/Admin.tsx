@@ -3,8 +3,10 @@ import { User, Rule, PointRequest, EquipmentRequest, EquipmentType } from '../ty
 import { userAPI, ruleAPI, equipmentRequestAPI, equipmentTypeAPI, equipmentInstanceAPI } from '../services/api';
 import { Settings, Users, BookOpen, Edit2, Trash2, Plus, Save, X, Upload, Download, MessageSquare, Check, XCircle, MapPin, Package } from 'lucide-react';
 import AttendanceManagementPanel from './AttendanceManagementPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 const Admin: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'import' | 'requests' | 'attendance' | 'equipment'>('users');
   const [users, setUsers] = useState<User[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -246,7 +248,9 @@ const Admin: React.FC = () => {
 2021002,15,参加组会并发言
 2021003,-5,迟到`;
     
-    const blob = new Blob([template], { type: 'text/csv;charset=utf-8;' });
+    // 添加 UTF-8 BOM 来防止乱码
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + template], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = '批量导入模板.csv';
@@ -430,7 +434,7 @@ const Admin: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    用户名
+                    姓名
                   </th>
                   <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     邮箱
@@ -449,8 +453,9 @@ const Admin: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {users.map((user) => (
                   <tr key={user.id}>
-                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {user.username}
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                      <div className="text-xs text-gray-500">{user.username}</div>
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
                       {user.email}
@@ -459,7 +464,11 @@ const Admin: React.FC = () => {
                       {user.points}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm hidden md:table-cell">
-                      {user.isAdmin ? (
+                      {user.isSuperAdmin ? (
+                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                          超级管理员
+                        </span>
+                      ) : user.isAdmin ? (
                         <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
                           管理员
                         </span>
@@ -470,27 +479,36 @@ const Admin: React.FC = () => {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      <button
-                        onClick={() => handleUpdatePoints(user.id)}
-                        className="text-primary-600 hover:text-primary-900"
-                        title="修改积分"
-                      >
-                        <Edit2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleToggleAdmin(user)}
-                        className="text-purple-600 hover:text-purple-900"
-                        title={user.isAdmin ? '取消管理员' : '设为管理员'}
-                      >
-                        <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-red-600 hover:text-red-900"
-                        title="删除用户"
-                      >
-                        <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </button>
+                      {/* 修改积分按钮 - 普通管理员不能修改其他管理员 */}
+                      {(!user.isAdmin || currentUser?.isSuperAdmin) && (
+                        <button
+                          onClick={() => handleUpdatePoints(user.id)}
+                          className="text-primary-600 hover:text-primary-900"
+                          title="修改积分"
+                        >
+                          <Edit2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </button>
+                      )}
+                      {/* 管理员权限按钮 - 只有超级管理员可以操作，且不能修改超级管理员 */}
+                      {currentUser?.isSuperAdmin && !user.isSuperAdmin && (
+                        <button
+                          onClick={() => handleToggleAdmin(user)}
+                          className="text-purple-600 hover:text-purple-900"
+                          title={user.isAdmin ? '取消管理员' : '设为管理员'}
+                        >
+                          <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </button>
+                      )}
+                      {/* 删除按钮 - 普通管理员不能删除其他管理员，不能删除超级管理员 */}
+                      {(!user.isAdmin || currentUser?.isSuperAdmin) && !user.isSuperAdmin && (
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="删除用户"
+                        >
+                          <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

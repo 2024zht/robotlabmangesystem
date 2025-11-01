@@ -55,8 +55,8 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
 
     const attendanceId = await new Promise<number>((resolve, reject) => {
       db.run(
-        `INSERT INTO attendances (name, description, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints, targetGrades, targetUserIds, createdBy)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO attendances (name, description, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints, targetGrades, targetUserIds, createdBy, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
         [name, description || null, dateStart, dateEnd, locationName, latitude, longitude, radius, penaltyPoints || 5, JSON.stringify(grades), JSON.stringify(userIds), createdBy],
         function (err) {
           if (err) reject(err);
@@ -551,7 +551,7 @@ router.post('/:triggerId/sign', authenticateToken, async (req: AuthRequest, res:
     // 创建签到记录
     await new Promise<void>((resolve, reject) => {
       db.run(
-        'INSERT INTO attendance_records (triggerId, userId, latitude, longitude) VALUES (?, ?, ?, ?)',
+        'INSERT INTO attendance_records (triggerId, userId, latitude, longitude, signedAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
         [triggerId, userId, latitude, longitude],
         (err) => {
           if (err) reject(err);

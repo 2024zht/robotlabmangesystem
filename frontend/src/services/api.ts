@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User, Rule, AuthResponse, PointLog, PointRequest, Leave, Ebook, Attendance, EquipmentType, EquipmentInstance, EquipmentRequest } from '../types';
+import { User, Rule, AuthResponse, PointLog, PointRequest, Leave, Ebook, EbookCategory, Attendance, EquipmentType, EquipmentInstance, EquipmentRequest } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
@@ -153,6 +153,20 @@ export const ebookAPI = {
   cleanupOrphans: () => api.post<{message: string; deletedCount: number; deletedFiles: string[]}>('/ebooks/cleanup-orphans'),
   
   getDownloadUrl: (filename: string) => api.get(`/ebooks/download/${encodeURIComponent(filename)}`),
+  
+  // 分类管理
+  getCategories: () => api.get<EbookCategory[]>('/ebooks/categories'),
+  
+  createCategory: (name: string, description?: string) =>
+    api.post('/ebooks/categories', { name, description }),
+  
+  updateCategory: (id: number, name: string, description?: string) =>
+    api.put(`/ebooks/categories/${id}`, { name, description }),
+  
+  deleteCategory: (id: number) => api.delete(`/ebooks/categories/${id}`),
+  
+  updateBookCategory: (bookId: number, categoryId: number) =>
+    api.patch(`/ebooks/${bookId}/category`, { categoryId }),
 };
 
 // 点名API

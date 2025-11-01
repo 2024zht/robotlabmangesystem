@@ -306,9 +306,34 @@ async function checkAndCompleteAttendances() {
         });
 
         const signedUserIds = new Set(signedUsers.map(u => u.userId));
-        const unsignedUsers = allUsers.filter(u => !signedUserIds.has(u.id));
+        
+        // 获取当天有已批准请假的用户
+        const usersOnLeave = await new Promise<any[]>((resolve, reject) => {
+          db.all(
+            `SELECT DISTINCT userId FROM leaves 
+             WHERE status = 'approved' 
+             AND date(startTime) <= date(?) 
+             AND date(endTime) >= date(?)`,
+            [trigger.triggerDate, trigger.triggerDate],
+            (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            }
+          );
+        });
+        
+        const usersOnLeaveIds = new Set(usersOnLeave.map(u => u.userId));
+        
+        // 过滤出未签到且未请假的用户
+        const unsignedUsers = allUsers.filter(u => 
+          !signedUserIds.has(u.id) && !usersOnLeaveIds.has(u.id)
+        );
 
-        // 扣除未签到用户的积分
+        if (usersOnLeaveIds.size > 0) {
+          console.log(`${usersOnLeaveIds.size} user(s) on approved leave, excluded from penalty`);
+        }
+
+        // 扣除未签到且未请假用户的积分
         for (const user of unsignedUsers) {
           try {
             // 扣除积分

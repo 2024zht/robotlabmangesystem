@@ -112,9 +112,12 @@ const getLocalBooks = async (): Promise<any[]> => {
   return new Promise((resolve, reject) => {
     db.all(
       `SELECT e.id, e.filename, e.originalName, e.fileSize, e.uploadedBy, 
-              e.uploadedAt, e.b2Synced, e.b2Path, u.username as uploadedByUsername 
+              e.uploadedAt, e.b2Synced, e.b2Path, e.categoryId,
+              u.username as uploadedByUsername,
+              c.name as categoryName
        FROM ebooks e 
        LEFT JOIN users u ON e.uploadedBy = u.id 
+       LEFT JOIN ebook_categories c ON e.categoryId = c.id
        ORDER BY e.uploadedAt DESC`,
       [],
       (err, rows) => {
@@ -270,7 +273,7 @@ router.post('/merge-chunks', authenticateToken, requireAdmin, async (req: AuthRe
     const userId = metadata.userId || req.user!.userId;
     const insertId = await new Promise<number>((resolve, reject) => {
       db.run(
-        'INSERT INTO ebooks (filename, originalName, fileSize, uploadedBy) VALUES (?, ?, ?, ?)',
+        'INSERT INTO ebooks (filename, originalName, fileSize, uploadedBy, uploadedAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
         [finalFileName, fileName, finalFileSize, userId],
         function (err) {
           if (err) reject(err);
@@ -382,7 +385,7 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('file'), a
     // 1. 保存文件信息到数据库
     const insertId = await new Promise<number>((resolve, reject) => {
       db.run(
-        'INSERT INTO ebooks (filename, originalName, fileSize, uploadedBy) VALUES (?, ?, ?, ?)',
+        'INSERT INTO ebooks (filename, originalName, fileSize, uploadedBy, uploadedAt) VALUES (?, ?, ?, ?, datetime(\'now\', \'localtime\'))',
         [file.filename, originalName, file.size, userId],
         function (err) {
           if (err) reject(err);
@@ -696,6 +699,289 @@ router.get('/file/:id', authenticateToken, async (req: AuthRequest, res: Respons
   } catch (error) {
     console.error('Download file error:', error);
     res.status(500).json({ error: '下载失败' });
+  }
+});
+
+// ==================== 书籍分类管理 API ====================
+
+// 获取所有分类
+router.get('/categories', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const categories = await new Promise<any[]>((resolve, reject) => {
+      db.all(
+        `SELECT c.*, u.name as createdByName 
+         FROM ebook_categories c 
+         LEFT JOIN users u ON c.createdBy = u.id
+         ORDER BY c.id ASC`,
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
+        }
+      );
+    });
+
+    // 获取每个分类下的书籍数量
+    const categoriesWithCount = await Promise.all(
+      categories.map(async (category) => {
+        const count = await new Promise<number>((resolve, reject) => {
+          db.get(
+            'SELECT COUNT(*) as count FROM ebooks WHERE categoryId = ?',
+            [category.id],
+            (err, row: any) => {
+              if (err) reject(err);
+              else resolve(row.count);
+            }
+          );
+        });
+        return { ...category, bookCount: count };
+      })
+    );
+
+    res.json(categoriesWithCount);
+  } catch (error) {
+    console.error('Get categories error:', error);
+    res.status(500).json({ error: '获取分类失败' });
+  }
+});
+
+// 创建新分类（管理员）
+router.post('/categories', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  const { name, description } = req.body;
+  const userId = req.user!.userId;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: '分类名称不能为空' });
+  }
+
+  try {
+    // 检查分类名是否已存在
+    const existing = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT id FROM ebook_categories WHERE name = ?',
+        [name],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: '该分类名称已存在' });
+    }
+
+    // 创建新分类
+    const categoryId = await new Promise<number>((resolve, reject) => {
+      db.run(
+        'INSERT INTO ebook_categories (name, description, createdBy, createdAt) VALUES (?, ?, ?, datetime(\'now\', \'localtime\'))',
+        [name, description || null, userId],
+        function (err) {
+          if (err) reject(err);
+          else resolve(this.lastID);
+        }
+      );
+    });
+
+    res.status(201).json({
+      message: '分类创建成功',
+      categoryId
+    });
+  } catch (error) {
+    console.error('Create category error:', error);
+    res.status(500).json({ error: '创建分类失败' });
+  }
+});
+
+// 更新分类（管理员）
+router.put('/categories/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  const categoryId = parseInt(req.params.id);
+  const { name, description } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: '分类名称不能为空' });
+  }
+
+  try {
+    // 检查分类是否存在
+    const category = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT * FROM ebook_categories WHERE id = ?',
+        [categoryId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: '分类不存在' });
+    }
+
+    // 检查新名称是否与其他分类冲突
+    const existing = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT id FROM ebook_categories WHERE name = ? AND id != ?',
+        [name, categoryId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: '该分类名称已存在' });
+    }
+
+    // 更新分类
+    await new Promise<void>((resolve, reject) => {
+      db.run(
+        'UPDATE ebook_categories SET name = ?, description = ? WHERE id = ?',
+        [name, description || null, categoryId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    res.json({ message: '分类更新成功' });
+  } catch (error) {
+    console.error('Update category error:', error);
+    res.status(500).json({ error: '更新分类失败' });
+  }
+});
+
+// 删除分类（管理员）
+router.delete('/categories/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  const categoryId = parseInt(req.params.id);
+
+  try {
+    // 检查分类是否存在
+    const category = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT * FROM ebook_categories WHERE id = ?',
+        [categoryId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: '分类不存在' });
+    }
+
+    // 不允许删除"未分类"
+    if (category.name === '未分类') {
+      return res.status(400).json({ error: '不能删除"未分类"分类' });
+    }
+
+    // 获取"未分类"的ID
+    const uncategorized = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT id FROM ebook_categories WHERE name = ?',
+        ['未分类'],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    // 将该分类下的所有书籍移动到"未分类"
+    if (uncategorized) {
+      await new Promise<void>((resolve, reject) => {
+        db.run(
+          'UPDATE ebooks SET categoryId = ? WHERE categoryId = ?',
+          [uncategorized.id, categoryId],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
+    }
+
+    // 删除分类
+    await new Promise<void>((resolve, reject) => {
+      db.run(
+        'DELETE FROM ebook_categories WHERE id = ?',
+        [categoryId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    res.json({ message: '分类删除成功，原分类下的书籍已移至"未分类"' });
+  } catch (error) {
+    console.error('Delete category error:', error);
+    res.status(500).json({ error: '删除分类失败' });
+  }
+});
+
+// 更新书籍的分类（管理员）
+router.patch('/:id/category', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  const bookId = parseInt(req.params.id);
+  const { categoryId } = req.body;
+
+  if (!categoryId) {
+    return res.status(400).json({ error: '请选择分类' });
+  }
+
+  try {
+    // 检查书籍是否存在
+    const book = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT * FROM ebooks WHERE id = ?',
+        [bookId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!book) {
+      return res.status(404).json({ error: '书籍不存在' });
+    }
+
+    // 检查分类是否存在
+    const category = await new Promise<any>((resolve, reject) => {
+      db.get(
+        'SELECT * FROM ebook_categories WHERE id = ?',
+        [categoryId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: '分类不存在' });
+    }
+
+    // 更新书籍分类
+    await new Promise<void>((resolve, reject) => {
+      db.run(
+        'UPDATE ebooks SET categoryId = ? WHERE id = ?',
+        [categoryId, bookId],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+
+    res.json({ message: '书籍分类更新成功' });
+  } catch (error) {
+    console.error('Update book category error:', error);
+    res.status(500).json({ error: '更新书籍分类失败' });
   }
 });
 

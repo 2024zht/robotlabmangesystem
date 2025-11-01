@@ -8,6 +8,7 @@ export interface User {
   phone: string;
   password: string;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isMember: boolean;
   points: number;
   grade: string;
@@ -47,6 +48,7 @@ export interface JWTPayload {
   userId: number;
   username: string;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
 }
 
 export interface Leave {
